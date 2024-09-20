@@ -29,8 +29,6 @@ class Library
 	public:
 	std::string uuid;
 	std::string title;
-	std::vector<Book> books;
-	Address address;
 }
 void processXml(std::string xmlData , sqlite3* db);
 int inputType(const std::string& data);
