@@ -17,10 +17,8 @@ void processXml(const std::string& xmlData , sqlite3* db)
 	xmlFreeDoc(doc);
 	xmlCleanupParser();	
 }
-void searchLibrary(xmlNode* root)
+void processNode(xmlNode* currentNode)
 {
-	xmlNode* currentNode = root;
-	
 	while(currentNode)
 	{
 		if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "library") == 0)
@@ -28,44 +26,19 @@ void searchLibrary(xmlNode* root)
 			Library library;
 			fillLibraryInfor(library, currentNode);
 			//add library to db
-		}
-		searchLibrary(currentNode -> children);
-
-		currentNode = currentNode -> next;
-	}
-
-
-}
-void searchBooks(xmlNode* root)
-{
-	xmlNode* currentNode = root;
-
-	while(currentNode)
-	{
-		if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "book") == 0)
+		}else if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "book") == 0)
 		{
 			Book book;
 			fillBookInfo(book , currentNode);
 			//add book to db
-		}
-		searchLibrary(currentNode -> children);
-
-		currentNode = currentNode -> next;
-	}
-}
-void searchAddress(xmlNode* root)
-{
-	xmlNode* currentNode = root;
-	while(currentNode)
-	{
-		if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "address") == 0)
+		}else if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "address") == 0)
 		{
 			Address address;
 			fillAddressInfo(address, currentNode);
 			//add address to db
 		}
-		searchLibrary(currentNode -> children);
 
+		processNode(currentNode -> children);
 		currentNode = currentNode -> next;
 	}
 }
