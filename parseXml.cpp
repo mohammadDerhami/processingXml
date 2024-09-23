@@ -1,59 +1,74 @@
-#include "parseXml.h"
+#include"parseXml.h"
 void processXml(const std::string& xmlData , sqlite3* db)
 {
 	xmlDocPtr doc = xmlReadMemory(xmlData.c_str(),xmlData.length() , nullptr , nullptr , 0);
 
-	if(doc == null)
+	if(doc == nullptr)
 	{
 		std::cerr<<"failed to parse xml "<<std::endl;
 		return;
 	}
 
 	xmlNode* root = xmlDocGetRootElement(doc);
-	searchLibrary(root);
-	searchBooks(root);
-	searchAddress(root);
+
+
+	processNode(root , db);
 
 	xmlFreeDoc(doc);
 	xmlCleanupParser();	
 }
-void processNode(xmlNode* currentNode)
+void processNode(xmlNode* currentNode , sqlite3* db)
 {
+	Address address;
+	std::string uuid;
+	std::vector<Book> books;
+	std::string libraryTitle;
+
 	while(currentNode)
 	{
-		if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "library") == 0)
+		if(currentNode -> type == XML_ELEMENT_NODE)
 		{
-			Library library;
-			fillLibraryInfor(library, currentNode);
-			//add library to db
-		}else if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "book") == 0)
-		{
-			Book book;
-			fillBookInfo(book , currentNode);
-			//add book to db
-		}else if(currentNode -> type == XML_ELEMENT_NODE && strcmp((const char *)currentNode->name , "address") == 0)
-		{
-			Address address;
-			fillAddressInfo(address, currentNode);
-			//add address to db
-		}
+			if(strcmp((const char *)currentNode->name , "uuid") == 0)
+			{
+				uuid = info(currentNode);
+			}	
+			else if( strcmp((const char *)currentNode->name , "title") == 0)
+			{
 
-		processNode(currentNode -> children);
-		currentNode = currentNode -> next;
-	}
-}
-void fillLibraryInfo(Library& library , xmlNode* libraryNode)
-{
-	for(xmlNode* libraryChild = libraryNode->children ; libraryChild ; libraryChild = libraryChild -> next)
-	{
-		if(strcmp((const char *)libraryChild->name , "uuid") == 0 )
-		{
-			library.uuid = info(libraryChild);
-		}else if(strcmp((const char *)libraryChild->name , "title") == 0)
-		{
-			library.title = info(libraryChild);
+				if(currentNode->parent && strcmp((const char *)currentNode -> parent -> name , "library") == 0)
+				{
+					libraryTitle = info(currentNode);
+				}
+
+			}else if(strcmp((const char *)currentNode->name , "city")==0)
+			{
+				address.city = info(currentNode);
+			}else if(strcmp((const char *)currentNode->name , "street")==0)
+			{
+				address.street = info(currentNode);
+			}else if(strcmp((const char *)currentNode->name , "zip")==0)
+			{
+				address.zip = info(currentNode);
+			}else if(strcmp((const char *)currentNode -> name , "book") == 0)
+			{
+				Book book;
+				fillBookInfo(book ,currentNode);
+				books.push_back(book);
+			}
+
+				
 		}
+		processNode(currentNode -> children , db);
+		currentNode = currentNode -> next;
+
 	}
+	if (!libraryTitle.empty()) {
+
+		insertLibrary(db, uuid, libraryTitle);
+
+	}
+	insertAddress(db , uuid ,address);
+	insertBooks(db , books , uuid);
 }
 void fillBookInfo(Book& book , xmlNode* bookNode)
 {
@@ -76,22 +91,6 @@ void fillBookInfo(Book& book , xmlNode* bookNode)
 
 
 }
-void fillAddressInfo(Address& address , xmlNode* addressNode)
-{
-	for(xmlNode* addressChild = addressNode -> children ; addressChild ; addressChild -> next)
-	{
-		if(strcmp((const char *)addressChild->name , "street") == 0)
-		{
-			address.street = info(addressChild);
-		}else if(strcmp((const char *)addressChild->name , "city") == 0)
-		{
-			address.city = info(addressChild);
-		}else if(strcmp((const char *)addressChild->name , "zip") == 0)
-		{
-			address.zip = info(addressChild);
-		}
-	}
-}
 const char * info(xmlNode* child)
 {
 	return (const char *)xmlNodeGetContent(child);
@@ -113,7 +112,7 @@ int inputType(const std::string& xmlData)
 
 	for(xmlNode* node = root->children ; node ; node = node -> next)
 	{
-		if(node->type  == XML_ELEMENT_NODE &&xmlstrcmp(node->name , BAD_CAST"operation") == 0)
+		if(node->type  == XML_ELEMENT_NODE &&xmlStrcmp(node->name , BAD_CAST"operation") == 0)
 		{
 			xmlChar* type = xmlGetProp(node , BAD_CAST"type");
 			if(type != nullptr)
@@ -126,13 +125,14 @@ int inputType(const std::string& xmlData)
 	}
 	xmlFreeDoc(doc);
 
-	if(strcmp(operationType.c_str() , "select" == 0 )
+	if(strcmp(operationType.c_str() , "select"  ) == 0 )
 	{
 		return 1;
-	}
-	else
+	}else
+	{
+	
 		return 0;
-
+	}
 
 
 }

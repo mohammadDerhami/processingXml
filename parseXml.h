@@ -6,6 +6,7 @@
 #include<cstring>
 #include<libxml/parser.h>
 #include<libxml/tree.h>
+#include"database.h"
 
 class Address
 {
@@ -14,7 +15,7 @@ class Address
 	std::string city;
 	std::string zip;
 	std::string uuid;
-}
+};
 class Book
 {
 	public:
@@ -23,19 +24,18 @@ class Book
 	int publication_year;
 	std::string title;
 	std::string uuid;
-}
+};
 class Library
 {
 	public:
 	std::string uuid;
 	std::string title;
-}
-void processXml(std::string xmlData , sqlite3* db);
+};
+void processXml(const std::string& xmlData , sqlite3* db);
 int inputType(const std::string& data);
 const char * info(xmlNode* child);
-void fillAddressInfo(Address& address , xmlNode* addressNode);
 void fillBookInfo(Book& book , xmlNode* bookNode);
-void fillLibraryInfo(Library& library , xmlNode* libraryNode);
+void processNode(xmlNode* currentNode , sqlite3* db);
 
 
 
