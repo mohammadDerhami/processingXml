@@ -1,11 +1,13 @@
 #include "server.h"
 #include "database.h"
 #include "parseXml.h"
-std::mutex coutMutex;
+
 sqlite3* db = nullptr ;
+
 void handleClient(int);
+
 int main()
-{
+{	//open db
         if (sqlite3_open("library.db", &db) != SQLITE_OK) 
 	{
 		std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
@@ -61,8 +63,7 @@ int main()
                         std::cerr<<"Accept failed";
                         continue;
                 }
-                std::thread clientThread(handleClient , new_socket);
-                clientThread.detach();
+		handleClient(new_socket);
         }
 
         sqlite3_close(db);
@@ -70,36 +71,72 @@ int main()
 	
 	return 0;
 }
-
+//read data from socket
 void handleClient(int clientSocket)
 {
+	std::string uuid;
+	std::vector<Book> books;
+	Address address;
+	std::string libraryTitle ;
+
         char buffer[1024];
         std::string xmlData;
         int bytesReceived = 0;
 
-        //read data from socket
         while((bytesReceived = read(clientSocket , buffer ,sizeof(buffer) -1 )) > 0)
         {
                 buffer[bytesReceived] = '\0';
                 xmlData += buffer;
         }
+        
+	std::cout<<"received request : \n" <<xmlData<<'\n';
 
-        {
-                std::lock_guard<std::mutex> guard(coutMutex);
-                std::cout<<"received request : \n" <<xmlData<<'\n';
-        }
-
-        //processing XML
         int request = inputType(xmlData);
+
         if(request == 0)
         {
-		processXml(xmlData ,db);
-                std::cout<<"Seccesfully "<<std::endl;
+		processXml(xmlData , address , uuid , books , libraryTitle );
+		if(uuid.empty())
+		{
+			std::cout<<"Wrong input (uuid is null) "<<std::endl;
+		}
+		else{
 
 
+			insertLibrary(db, uuid, libraryTitle);
+
+			if(!books.empty())
+			{
+				insertBooks(db , books , uuid);
+			}
+			if(!address.city.empty() || !address.street.empty() || !address.zip.empty())
+			{
+				insertAddress(db , uuid ,address);
+			}
+		}
         }
-        else
+        else if(request==1)
         {
-                //std::cout<<getLibraryAsXml(db);
+		std::vector<Library> libraries ;
+		fillLibraries(libraries , db);
+
+		if(libraries.empty())
+		{
+			std::cout<<"no library "<<std::endl;
+		}else
+		{
+
+			xmlChar* xmlBuff;
+			int buffersize;
+
+			xmlDocPtr xmlDoc = generateXml(libraries);
+			xmlDocDumpFormatMemory(xmlDoc, &xmlBuff, &buffersize , 1); 
+
+			std::cout.write((const char*)xmlBuff, buffersize);
+
+			xmlFree(xmlBuff); 
+			xmlFreeDoc(xmlDoc); 
+			xmlCleanupParser();
+		}
         }
 }

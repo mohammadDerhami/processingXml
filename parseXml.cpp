@@ -1,5 +1,5 @@
 #include"parseXml.h"
-void processXml(const std::string& xmlData , sqlite3* db)
+void processXml(const std::string& xmlData ,   Address& address , std::string& uuid , std::vector<Book>& books , std::string& libraryTitle)
 {
 	xmlDocPtr doc = xmlReadMemory(xmlData.c_str(),xmlData.length() , nullptr , nullptr , 0);
 
@@ -10,20 +10,16 @@ void processXml(const std::string& xmlData , sqlite3* db)
 	}
 
 	xmlNode* root = xmlDocGetRootElement(doc);
+	findUuid(uuid , root);
 
-
-	processNode(root , db);
+	processNode(root ,address , uuid , books , libraryTitle);
 
 	xmlFreeDoc(doc);
 	xmlCleanupParser();	
 }
-void processNode(xmlNode* currentNode , sqlite3* db)
+void findUuid(std::string& uuid , xmlNode* currentNode)
 {
-	Address address;
-	std::string uuid;
-	std::vector<Book> books;
-	std::string libraryTitle;
-
+	
 	while(currentNode)
 	{
 		if(currentNode -> type == XML_ELEMENT_NODE)
@@ -31,16 +27,41 @@ void processNode(xmlNode* currentNode , sqlite3* db)
 			if(strcmp((const char *)currentNode->name , "uuid") == 0)
 			{
 				uuid = info(currentNode);
-			}	
-			else if( strcmp((const char *)currentNode->name , "title") == 0)
+				return;
+			}
+		}
+
+		if (currentNode->children) {
+			findUuid(uuid, currentNode->children);
+
+			if (!uuid.empty()) { 
+				return;
+			}
+
+		}
+
+	currentNode = currentNode->next;
+
+	}
+}
+//process nodes recursive
+void processNode(xmlNode* currentNode ,  Address& address , std::string& uuid , std::vector<Book>& books , std::string& libraryTitle)
+{
+
+	while(currentNode)
+	{
+		if(currentNode -> type == XML_ELEMENT_NODE)
+		{
+			if( strcmp((const char *)currentNode->name , "title") == 0)
 			{
 
 				if(currentNode->parent && strcmp((const char *)currentNode -> parent -> name , "library") == 0)
 				{
 					libraryTitle = info(currentNode);
 				}
+			}
 
-			}else if(strcmp((const char *)currentNode->name , "city")==0)
+			else if(strcmp((const char *)currentNode->name , "city")==0)
 			{
 				address.city = info(currentNode);
 			}else if(strcmp((const char *)currentNode->name , "street")==0)
@@ -53,23 +74,25 @@ void processNode(xmlNode* currentNode , sqlite3* db)
 			{
 				Book book;
 				fillBookInfo(book ,currentNode);
-				books.push_back(book);
+				book.uuid = uuid;	
+				if(book.id == 0)
+				{
+					std::cout<<"Wrong input (book without id) "<<std::endl;
+				}else
+				{
+					books.push_back(book);
+					std::cout<<"book with id : "<<book.id<<" push in books "<<std::endl;
+				}
 			}
 
 				
 		}
-		processNode(currentNode -> children , db);
+		processNode(currentNode -> children , address , uuid , books , libraryTitle );
 		currentNode = currentNode -> next;
 
 	}
-	if (!libraryTitle.empty()) {
-
-		insertLibrary(db, uuid, libraryTitle);
-
-	}
-	insertAddress(db , uuid ,address);
-	insertBooks(db , books , uuid);
 }
+
 void fillBookInfo(Book& book , xmlNode* bookNode)
 {
 	for(xmlNode* bookChild = bookNode->children ; bookChild ; bookChild = bookChild ->next)
@@ -83,7 +106,7 @@ void fillBookInfo(Book& book , xmlNode* bookNode)
 		}else if(strcmp((const char *)bookChild->name , "author") == 0)
 		{
 			book.author = info(bookChild);
-		}else if(strcmp((const char *)bookChild->name , "pulication_year") == 0)
+		}else if(strcmp((const char *)bookChild->name , "publication_year") == 0)
 		{
 			book.publication_year = std::stoi(info(bookChild));
 		}
@@ -94,7 +117,8 @@ void fillBookInfo(Book& book , xmlNode* bookNode)
 const char * info(xmlNode* child)
 {
 	return (const char *)xmlNodeGetContent(child);
-}	
+}
+//type of input(xml data or select)
 int inputType(const std::string& xmlData)
 {
 
@@ -133,6 +157,5 @@ int inputType(const std::string& xmlData)
 	
 		return 0;
 	}
-
 
 }
