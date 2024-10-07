@@ -8,7 +8,9 @@
 #include<arpa/inet.h>
 #include<unistd.h>
 #include<sys/socket.h>
-void handleClient(int clientSocket);
+#include "database.h"
+void creatingSocket(std::string& xmlData , sqlite3* db);
+void dataInput(int clientSocket, sqlite3* db , std::string& xmlData);
 
 
 #endif

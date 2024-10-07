@@ -81,7 +81,6 @@ void processNode(xmlNode* currentNode ,  Address& address , std::string& uuid , 
 				}else
 				{
 					books.push_back(book);
-					std::cout<<"book with id : "<<book.id<<" push in books "<<std::endl;
 				}
 			}
 

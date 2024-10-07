@@ -54,14 +54,9 @@ void insertLibrary(sqlite3* db, const std::string& uuid, const std::string& titl
         
 		sqlite3_bind_text(stmt, 2, title.empty() ? nullptr : title.c_str(), -1, SQLITE_STATIC);
 		
-		std::cout<<"library added to db "<<std::endl;
 
 		if (sqlite3_step(stmt) != SQLITE_DONE) {
 		    std::cerr << "Error inserting/updating library: " << sqlite3_errmsg(db) << std::endl;
-		}
-		else
-		{
-			std::cout<<"address added to db "<<std::endl;
 		}
 		sqlite3_finalize(stmt);
 	} else {
