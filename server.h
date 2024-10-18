@@ -1,16 +1,20 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include<iostream>
-#include<thread>
-#include<mutex>
-#include<netinet/in.h>
-#include<arpa/inet.h>
-#include<unistd.h>
-#include<sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <iostream>
+#include <mutex>
+#include <thread>
+
 #include "database.h"
-void creatingSocket(std::string& xmlData , sqlite3* db);
-void dataInput(int clientSocket, sqlite3* db , std::string& xmlData);
+#include "parseXml.h"
+void creatingSocket(sqlite3* db);
+void dataInput(int clientSocket, sqlite3* db);
+int readDataLength(int clientSocket);
 
 
 #endif
