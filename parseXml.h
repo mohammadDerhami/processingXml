@@ -12,15 +12,22 @@
 #include <vector>
 
 #include "database.h"
-void processXml(const std::string& xmlData, Address& address, std::string& uuid,
-		std::vector<Book>& books, std::string& libraryTitle);
 int inputType(const std::string& data);
 const char* info(xmlNode* child);
-void fillBookInfo(Book& book, xmlNode* bookNode);
-void processNode(xmlNode* currentNode, Address& address, std::string& uuid,
-		 std::vector<Book>& books, std::string& libraryTitle);
-void findUuid(std::string& uuid, xmlNode* currentNode);
-void process(const std::string xmlData, sqlite3* db);
-std::string select(sqlite3* db);
-
+// std::string select(sqlite3* db);
+void processXml(const std::string& xmlData, sqlite3* db);
+void processNode(xmlNode* currentNode, std::string& uuid, sqlite3* db,
+		 std::string& mainTable);
+void findUuid(std::string& uuid, xmlNode* currentNode, std::string& mainTable);
+bool hasAttribute(xmlNode* currentNode);
+bool isAttributeNode(xmlNode* node);
+std::string casting(const xmlChar* s);
+bool isObjectNode(xmlNode* node);
+bool isElementNode(xmlNode* node);
+std::string nodeName(xmlNode* node);
+std::string nodeValue(xmlNode* node);
+void insertInDb(xmlNode* currentNode, const std::string& uuid, sqlite3* db);
+std::vector<std::string> propertyName(xmlNode* currentNode);
+std::vector<std::string> propertyValue(xmlNode* currentNode);
+// std::string select(sqlite3* db);
 #endif

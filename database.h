@@ -6,41 +6,23 @@
 #include <libxml/xmlmemory.h>
 #include <sqlite3.h>
 
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include<cstring>
-class Address {
-       public:
-	std::string street;
-	std::string city;
-	std::string zip;
-	std::string uuid;
-};
-class Book {
-       public:
-	int id = 0;
-	std::string author;
-	int publication_year = 0;
-	std::string title;
-	std::string uuid;
-};
-class Library {
-       public:
-	std::string uuid;
-	std::string title;
-	Address address;
-	std::vector<Book> books;
-};
-
-void initDatabase(sqlite3* db);
-void insertLibrary(sqlite3* db, const std::string& uuid,
-		   const std::string& title);
-void insertBooks(sqlite3* db, std::vector<Book>& books,
-		 const std::string& uuid);
-void insertAddress(sqlite3* db, const std::string& uuid, Address& address);
-xmlNodePtr createLibraryNode(xmlDocPtr doc, const Library& library);
+void openDb(sqlite3* db);
+bool existTable(const std::string& name, sqlite3* db);
+void createTable(const std::string& name, const std::vector<std::string>& properties, sqlite3* db,
+		 bool mainTable, const std::string& mainTableName);
+bool existUuid(sqlite3* db, const std::string& uuid);
+void update(sqlite3* db, const std::string& uuid,
+	    const std::vector<std::string>& propertyName, const std::vector<std::string>& propertyValue,
+	    const std::string& tableName);
+void insert(sqlite3* db, const std::string& uuid,
+	    const std::vector<std::string>& propertyName, const std::vector<std::string>& propertyValue,
+	    const std::string& tableName);
+/*xmlNodePtr createLibraryNode(xmlDocPtr doc, const Library& library);
 xmlDocPtr generateXml(const std::vector<Library>& libraries);
 void fillLibrary(std::unordered_map<std::string, Library>& libraryMap,
 		 sqlite3* db);
@@ -49,5 +31,5 @@ void fillAddress(std::unordered_map<std::string, Library>& libraryMap,
 void fillBooks(std::unordered_map<std::string, Library>& libraryMap,
 	       sqlite3* db);
 void fillLibraries(std::vector<Library>& libraries, sqlite3* db);
-
+*/
 #endif

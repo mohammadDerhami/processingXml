@@ -1,53 +1,9 @@
 #include "parseXml.h"
-void process(const std::string xmlData, sqlite3* db) {
-	std::string uuid;
-	std::vector<Book> books;
-	Address address;
-	std::string libraryTitle;
-
-	// pass attributes to processXml function
-	processXml(xmlData, address, uuid, books, libraryTitle);
-	// if input doesnt have uuid
-	if (uuid.empty()) {
-		std::cout << "Wrong input (uuid is null) " << std::endl;
-	} else {
-		insertLibrary(db, uuid, libraryTitle);
-
-		if (!books.empty()) {
-			insertBooks(db, books, uuid);
-			std::cout << "add book" << std::endl;
-		}
-		if (!address.city.empty() || !address.street.empty() ||
-		    !address.zip.empty()) {
-			insertAddress(db, uuid, address);
-		}
-	}
-}
-std::string select(sqlite3* db) {
-	std::vector<Library> libraries;
-	fillLibraries(libraries, db);
-	// db is empty
-	if (libraries.empty()) {
-		return "no library ";
-	} else {
-		xmlChar* xmlBuff;
-		int buffersize;
-
-		xmlDocPtr xmlDoc = generateXml(libraries);
-		xmlDocDumpFormatMemory(xmlDoc, &xmlBuff, &buffersize, 1);
-		// convert xmlChar* -> std::string
-		std::string xmlString =
-		    std::string(reinterpret_cast<const char*>(xmlBuff));
-		xmlFree(xmlBuff);
-		xmlFreeDoc(xmlDoc);
-		xmlCleanupParser();
-		return xmlString;
-	}
-}
-
 // Pass the uuid and xmlData(string) to processNode function
-void processXml(const std::string& xmlData, Address& address, std::string& uuid,
-		std::vector<Book>& books, std::string& libraryTitle) {
+void processXml(const std::string& xmlData, sqlite3* db) {
+	std::string mainTable;
+	std::string uuid;
+
 	xmlDocPtr doc = xmlReadMemory(xmlData.c_str(), xmlData.length(),
 				      nullptr, nullptr, 0);
 	// Check if the XML parsing failed
@@ -55,110 +11,147 @@ void processXml(const std::string& xmlData, Address& address, std::string& uuid,
 		std::cerr << "failed to parse xml " << std::endl;
 		return;
 	}
-
 	xmlNode* root = xmlDocGetRootElement(doc);
-	findUuid(uuid, root);
-	// pass atributes to processNode function , this function process nodes
-	// extract information
-	processNode(root, address, uuid, books, libraryTitle);
+	findUuid(uuid, root, mainTable);
+	// pass atributes to processNode function , this
+	// function process nodes extract information
+	processNode(root, uuid, db, mainTable);
 
 	xmlFreeDoc(doc);
 	xmlCleanupParser();
 }
-// Finds UUID in XML nodes
-void findUuid(std::string& uuid, xmlNode* currentNode) {
+// process nodes recursive
+void processNode(xmlNode* currentNode, std::string& uuid, sqlite3* db,
+		 std::string& mainTable) {
 	while (currentNode) {
-		if (currentNode->type == XML_ELEMENT_NODE) {
+		// Check if the current node is an
+		// element node
+		if (isElementNode(currentNode)) {
+			if (hasAttribute(currentNode) &&
+			    isObjectNode(currentNode)) {
+				if (existTable(nodeName(currentNode), db)) {
+					insertInDb(currentNode, uuid, db);
+				} else {
+					bool check = (mainTable ==
+						      nodeName(currentNode));
+					std::vector<std::string> properties =
+					    propertyName(currentNode);
+					createTable(nodeName(currentNode),
+						    properties, db, check,
+						    mainTable);
+					insertInDb(currentNode, uuid, db);
+				}
+			}
+		}
+		processNode(currentNode->children, uuid, db, mainTable);
+		currentNode = currentNode->next;
+	}
+}
+// Finds UUID in XML nodes
+void findUuid(std::string& uuid, xmlNode* currentNode, std::string& mainTable) {
+	while (currentNode) {
+		if (isElementNode(currentNode)) {
 			if (strcmp((const char*)currentNode->name, "uuid") ==
 			    0) {
 				uuid = info(currentNode);
+				mainTable = nodeName(currentNode->parent);
 				return;
 			}
 		}
-		// If the current node has children, recursively search in the
-		// children
+		// If the current node has children,
+		// recursively search in the children
 		if (currentNode->children) {
-			findUuid(uuid, currentNode->children);
-
-			if (!uuid.empty()) {
-				return;	 // Exit if UUID is found in children
-			}
+			findUuid(uuid, currentNode->children, mainTable);
 		}
 
 		currentNode = currentNode->next;
 	}
 }
-// process nodes recursive
-void processNode(xmlNode* currentNode, Address& address, std::string& uuid,
-		 std::vector<Book>& books, std::string& libraryTitle) {
-	while (currentNode) {
-		// Check if the current node is an element node
-		if (currentNode->type == XML_ELEMENT_NODE) {
-			// If the node name is "title" and its parent is
-			// "library", set the library title
-			if (strcmp((const char*)currentNode->name, "title") ==
-			    0) {
-				if (currentNode->parent &&
-				    strcmp(
-					(const char*)currentNode->parent->name,
-					"library") == 0) {
-					libraryTitle = info(currentNode);
-				}
-			}
-			// Fill address information based on the node names
-
-			else if (strcmp((const char*)currentNode->name,
-					"city") == 0) {
-				address.city = info(currentNode);
-			} else if (strcmp((const char*)currentNode->name,
-					  "street") == 0) {
-				address.street = info(currentNode);
-			} else if (strcmp((const char*)currentNode->name,
-					  "zip") == 0) {
-				address.zip = info(currentNode);
-			}
-			// If the node name is "book", extract book information
-			else if (strcmp((const char*)currentNode->name,
-					"book") == 0) {
-				Book book;
-				fillBookInfo(book,
-					     currentNode);  // Fill book info
-							    // from XML node
-				book.uuid = uuid;
-				// Check if book has a id
-				if (book.id == 0) {
-					std::cout
-					    << "Wrong input (book without id) "
-					    << std::endl;
-				} else {
-					books.push_back(book);	// Add the book
-								// to the vector
-				}
-			}
-		}
-		processNode(currentNode->children, address, uuid, books,
-			    libraryTitle);
-		currentNode = currentNode->next;
-	}
-}
-
-// Fill book information from the XML node
-void fillBookInfo(Book& book, xmlNode* bookNode) {
-	for (xmlNode* bookChild = bookNode->children; bookChild;
-	     bookChild = bookChild->next) {
-		if (strcmp((const char*)bookChild->name, "id") == 0) {
-			book.id = std::stoi(info(bookChild));
-		} else if (strcmp((const char*)bookChild->name, "title") == 0) {
-			book.title = info(bookChild);
-		} else if (strcmp((const char*)bookChild->name, "author") ==
-			   0) {
-			book.author = info(bookChild);
-		} else if (strcmp((const char*)bookChild->name,
-				  "publication_year") == 0) {
-			book.publication_year = std::stoi(info(bookChild));
+// Check all children of node
+// If has text node return true
+// Else return false
+bool hasAttribute(xmlNode* currentNode) {
+	for (xmlNode* child = currentNode->children; child;
+	     child = child->next) {
+		if (isAttributeNode(child) && isElementNode(child)) {
+			return true;
 		}
 	}
+	return false;
 }
+// Cast xmlChar -> std::string
+std::string casting(const xmlChar* s) {
+	return std::string(reinterpret_cast<const char*>(s));
+}  // Retrun name of node
+std::string nodeName(xmlNode* node) { return casting(node->name); }
+// Return value of node
+std::string nodeValue(xmlNode* node) {
+	return casting(xmlNodeGetContent(node));
+}
+
+// Create two vector
+// And pass them to insert db
+void insertInDb(xmlNode* currentNode, const std::string& uuid, sqlite3* db) {
+	std::string tableName = nodeName(currentNode);
+	std::vector<std::string> names = propertyName(currentNode);
+	std::vector<std::string> values = propertyValue(currentNode);
+	insert(db, uuid, names, values, tableName);
+}
+// If node is attribute -> true
+// Else -> false
+bool isAttributeNode(xmlNode* node) { return !isObjectNode(node); }
+// If has element child -> object node
+bool isObjectNode(xmlNode* node) {
+	for (xmlNode* child = node->children; child; child = child->next) {
+		if (isElementNode(child)) {
+			return true;
+		}
+	}
+	return false;
+}
+bool isElementNode(xmlNode* node) { return node->type == XML_ELEMENT_NODE; }
+
+// Return names of property
+std::vector<std::string> propertyName(xmlNode* currentNode) {
+	std::vector<std::string> propertyName;
+	for (xmlNode* child = currentNode->children; child;
+	     child = child->next) {
+		if (isAttributeNode(child) && isElementNode(child)) {
+			propertyName.push_back(nodeName(child));
+		}
+	}
+	return propertyName;
+}
+// Return values of property
+std::vector<std::string> propertyValue(xmlNode* currentNode) {
+	std::vector<std::string> propertyValue;
+	for (xmlNode* child = currentNode->children; child;
+	     child = child->next) {
+		if (isAttributeNode(child)) {
+			propertyValue.push_back(nodeValue(child));
+		}
+	}
+	return propertyValue;
+}
+/*
+std::string select(sqlite3* db) {
+	// db is empty
+		xmlChar* xmlBuff;
+		int buffersize;
+
+		xmlDocPtr xmlDoc = generateXml();
+		xmlDocDumpFormatMemory(xmlDoc, &xmlBuff,
+&buffersize, 1);
+		// convert xmlChar* -> std::string
+		std::string xmlString =
+		    std::string(reinterpret_cast<const
+char*>(xmlBuff)); xmlFree(xmlBuff); xmlFreeDoc(xmlDoc);
+		xmlCleanupParser();
+		return xmlString;
+
+}
+*/
+
 // Get content from an XML node
 const char* info(xmlNode* child) {
 	return (const char*)xmlNodeGetContent(child);
@@ -175,8 +168,10 @@ int inputType(const std::string& xmlData) {
 		return -1;
 	}
 
-	std::string operationType;  //  Variable to store the operation type
-	// Traverse the child nodes of the root to find the operation type
+	std::string operationType;  //  Variable to store the
+				    //  operation type
+	// Traverse the child nodes of the root to find
+	// the operation type
 	for (xmlNode* node = root->children; node; node = node->next) {
 		if (node->type == XML_ELEMENT_NODE &&
 		    xmlStrcmp(node->name, BAD_CAST "operation") == 0) {
@@ -186,11 +181,13 @@ int inputType(const std::string& xmlData) {
 				    reinterpret_cast<const char*>(type);
 				xmlFree(type);
 			}
-			break;	//// Break after finding the operation type
+			break;	//// Break after finding
+				/// the operation type
 		}
 	}
 	xmlFreeDoc(doc);
-	// Return 1 if the operation type is "select", otherwise return 0
+	// Return 1 if the operation type is "select",
+	// otherwise return 0
 	if (strcmp(operationType.c_str(), "select") == 0) {
 		return 1;
 	} else {

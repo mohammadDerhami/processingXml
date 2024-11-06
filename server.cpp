@@ -83,10 +83,10 @@ void dataInput(int clientSocket, sqlite3* db) {
 	int request = inputType(xmlData);  // request = 0 -> xml data
 	// request = 1 -> select
 	if (request == 0) {
-		process(xmlData, db);
+		processXml(xmlData, db);
 	} else if (request == 1) {
-		std::string xml = select(db);
+		//std::string xml = select(db);
 		// send data to client
-		send(clientSocket, xml.c_str(), xml.size(), 0);
+		//send(clientSocket, xml.c_str(), xml.size(), 0);
 	}
 }

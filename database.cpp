@@ -1,160 +1,207 @@
 #include "database.h"
-// Create tables of database
-void initDatabase(sqlite3* db) {
-	const char* createLibraryTable =
-	    "CREATE TABLE IF NOT EXISTS library ("
-	    "uuid TEXT PRIMARY KEY, "
-	    "title TEXT );";
-
-	const char* createBooksTable =
-	    "CREATE TABLE IF NOT EXISTS books ("
-	    "id INTEGER PRIMARY KEY, "
-	    "title TEXT , "
-	    "author TEXT , "
-	    "publication_year INTEGER , "
-	    "uuid TEXT , "
-	    "FOREIGN KEY (uuid) REFERENCES library(uuid));";
-
-	const char* createAddressTable =
-	    "CREATE TABLE IF NOT EXISTS address ("
-	    "street TEXT , "
-	    "city TEXT , "
-	    "zip  TEXT , "
-	    "uuid TEXT PRIMARY KEY , "
-	    "FOREIGN KEY (uuid) REFERENCES library(uuid));";
-
-	char* errMsg;
-	// Execute a SQL statement to create a table in the SQLite database.
-	if (sqlite3_exec(db, createLibraryTable, 0, 0, &errMsg) != SQLITE_OK) {
-		std::cerr << "SQL error: " << errMsg << std::endl;
-		sqlite3_free(errMsg);
-	}
-
-	if (sqlite3_exec(db, createBooksTable, 0, 0, &errMsg) != SQLITE_OK) {
-		std::cerr << "SQL error: " << errMsg << std::endl;
-		sqlite3_free(errMsg);
-	}
-
-	if (sqlite3_exec(db, createAddressTable, 0, 0, &errMsg) != SQLITE_OK) {
-		std::cerr << "SQL error: " << errMsg << std::endl;
-		sqlite3_free(errMsg);
-	}
-}
-
-void insertLibrary(sqlite3* db, const std::string& uuid,
-		   const std::string& title) {
-	// SQL statement to insert a new library or update the title if the uuid
-	// exists
-
-	const char* sql =
-	    "INSERT INTO library (uuid, title) VALUES (?, ?) "
-	    "ON CONFLICT(uuid) DO UPDATE SET "
-	    "title = COALESCE(NULLIF(excluded.title, ''), library.title);";
-
-	sqlite3_stmt* stmt;  // Statement handler for the prepared SQL statement
-	if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-		// Bind the uuid to the first placeholder in the SQL statement
-		sqlite3_bind_text(stmt, 1, uuid.c_str(), -1, SQLITE_STATIC);
-		// Bind the title to the second placeholder; if title is empty,
-		// bind NULL
-		sqlite3_bind_text(stmt, 2,
-				  title.empty() ? nullptr : title.c_str(), -1,
-				  SQLITE_STATIC);
-
-		if (sqlite3_step(stmt) != SQLITE_DONE) {
-			std::cerr << "Error inserting/updating library: "
-				  << sqlite3_errmsg(db) << std::endl;
-		}
-		sqlite3_finalize(stmt);
-	} else {
-		std::cerr << "Error preparing statement: " << sqlite3_errmsg(db)
-			  << std::endl;
-	}
-}
-
-void insertBooks(sqlite3* db, std::vector<Book>& books,
-		 const std::string& uuid) {
-	// SQL statement to insert a new book or update it if the id exists
-	const char* sql =
-	    "INSERT INTO books (id, title, author, publication_year, uuid) "
-	    "VALUES (?, ?, ?, ?, ?) "
-	    "ON CONFLICT(id) DO UPDATE SET "
-	    "title = COALESCE(NULLIF(excluded.title, ''), books.title), "
-	    "author = COALESCE(NULLIF(excluded.author, ''), books.author), "
-	    "publication_year = excluded.publication_year;";
+// Check the table exist
+bool existTable(const std::string& name, sqlite3* db) {
+	std::string query =
+	    "SELECT name FROM sqlite_master WHERE type='table' AND name='" +
+	    name + "';";
 	sqlite3_stmt* stmt;
-
-	if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-		std::cerr << "Error preparing statement: " << sqlite3_errmsg(db)
+	std::cout << "query of exist table : " << query << std::endl;
+	// Prepare the sql statement
+	if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) !=
+	    SQLITE_OK) {
+		std::cerr << "Error preparing existTable " << sqlite3_errmsg(db)
 			  << std::endl;
-
+		return false;
+	}
+	bool exists = false;
+	// Execute the statement and check the table exist
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		exists = true;	// If we get a row , the table exist
+	}
+	// Clean up
+	sqlite3_finalize(stmt);
+	return exists;
+}
+// Creating Table
+// name -> name of the table
+// bool mainTable -> specifies whether it is the main table or not
+// mainTableName -> name of the mainTable
+void createTable(const std::string& name, const std::vector<std::string>& properties,
+		 sqlite3* db, bool mainTable, const std::string& mainTableName) {
+	std::string query = "CREATE TABLE IF NOT EXISTS " + name + " (";
+	std::string propertyQuery;
+	if (mainTable) {
+		for (std::vector<std::string>::size_type i = 0;
+		     i < properties.size(); i++) {
+			if (properties[i] == "uuid") {
+				propertyQuery = properties[i] +
+						" TEXT PRIMARY KEY NOT NULL  ";
+				query = query + propertyQuery;
+			} else {
+				propertyQuery =
+				    ", " + properties[i] + " TEXT NOT NULL  ";
+				query = query + propertyQuery;
+			}
+		}
+		query = query + ");";
+	} else {
+		for (std::vector<std::string>::size_type i = 0;
+		     i < properties.size(); i++) {
+			propertyQuery = properties[i] + " TEXT NOT NULL , ";
+			query = query + propertyQuery;
+		}
+		query = query +
+			"uuid TEXT PRIMARY KEY , "
+			"FOREIGN KEY (uuid) REFERENCES " +
+			mainTableName + " (uuid));";
+	}
+	std::cout << "query of create table : " << query << std::endl;
+	char* errMsg;
+	// Execute a SQL statement to create a table in the
+	// SQLite database.
+	if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &errMsg) !=
+	    SQLITE_OK) {
+		std::cerr<<" in create table : "<<sqlite3_errmsg(db)<<std::endl;
+		sqlite3_free(errMsg);
 		return;
 	}
-
-	for (const auto& book : books) {
-		sqlite3_bind_int(stmt, 1, book.id);
-		sqlite3_bind_text(
-		    stmt, 2, book.title.empty() ? nullptr : book.title.c_str(),
-		    -1, SQLITE_STATIC);
-		sqlite3_bind_text(
-		    stmt, 3,
-		    book.author.empty() ? nullptr : book.author.c_str(), -1,
-		    SQLITE_STATIC);
-		sqlite3_bind_int(stmt, 4, book.publication_year);
-		sqlite3_bind_text(stmt, 5, book.uuid.c_str(), -1,
-				  SQLITE_STATIC);
-
-		if (sqlite3_step(stmt) != SQLITE_DONE) {
-			std::cerr << "Error inserting/updating book with uuid "
-				  << uuid << ": " << sqlite3_errmsg(db)
-				  << std::endl;
-		}
-
-		sqlite3_reset(stmt);
+	std::cout << "create table : " << name << " :) " << std::endl;
+}
+bool existUuid(sqlite3* db, const std::string& uuid) {
+	// Retrieve the names of all tables
+	std::string query =
+	    "SELECT name FROM sqlite_master WHERE type='table';";
+	sqlite3_stmt* stmt;
+	// Prepare the query to retrive table names
+	if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) !=
+	    SQLITE_OK) {
+		std::cerr << "Error preparing in existUUid  "
+			  << sqlite3_errmsg(db) << std::endl;
+		return false;
 	}
-
+	bool exists = false;
+	// Check each table to see if the uuid exists
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		const char* tableName =
+		    reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+		std::string uuidQuery = "SELECT COUNT(*) FROM " +
+					std::string(tableName) +
+					" WHERE uuid = ?;";
+		sqlite3_stmt* uuidStmt;
+		if (sqlite3_prepare_v2(db, uuidQuery.c_str(), -1, &uuidStmt,
+				       nullptr) != SQLITE_OK) {
+			std::cerr << "Error preparing  in exist uuid "
+				  << sqlite3_errmsg(db) << std::endl;
+			return false;
+		}
+		sqlite3_bind_text(uuidStmt, 1, uuid.c_str(), -1, SQLITE_STATIC);
+		// Execute the query
+		if (sqlite3_step(uuidStmt) == SQLITE_ROW) {
+			int count = sqlite3_column_int(uuidStmt, 0);
+			if (count > 0) {
+				exists = true;
+				break;
+			}
+		}
+		// Clean up
+		sqlite3_finalize(uuidStmt);
+	}
+	sqlite3_finalize(stmt);
+	return exists;
+}
+void update(sqlite3* db, const std::string& uuid,
+	    const std::vector<std::string>& propertyName,
+	    const std::vector<std::string>& propertyValue,
+	    const std::string& tableName) {
+	// Build query for update
+	std::string query = "UPDATE " + tableName + " SET ";
+	for (std::vector<std::string>::size_type i = 0; i < propertyName.size();
+	     i++) {
+		query = query + propertyName[i] + " = ?";
+		if (i < propertyName.size() - 1) {
+			query += ", ";
+		}
+	}
+	query += " WEHRE uuid = ?;";
+	sqlite3_stmt* stmt;
+	if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) !=
+	    SQLITE_OK) {
+		std::cerr << "Error to preparing in update  "
+			  << sqlite3_errmsg(db) << std::endl;
+		sqlite3_finalize(stmt);
+		return;
+	}
+	// Bind property
+	for (std::vector<std::string>::size_type i = 0; i < propertyName.size();
+	     i++) {
+		sqlite3_bind_text(stmt, i + 1, propertyValue[i].c_str(), -1,
+				  SQLITE_STATIC);
+	}
+	sqlite3_bind_text(stmt, propertyName.size() + 1, uuid.c_str(), -1,
+			  SQLITE_STATIC);
+	// Execute
+	if (sqlite3_step(stmt) != SQLITE_DONE) {
+		std::cerr << "Error executing update " << sqlite3_errmsg(db)
+			  << std::endl;
+		sqlite3_finalize(stmt);
+		return;
+	}
 	sqlite3_finalize(stmt);
 }
-
-void insertAddress(sqlite3* db, const std::string& uuid, Address& address) {
-	// SQL statement to insert a new address or update if uuid exists
-	const char* sql =
-
-	    "INSERT INTO address (city, street, zip, uuid) VALUES (?, ?, ?, ?) "
-	    "ON CONFLICT(uuid) DO UPDATE SET "
-	    "city = COALESCE(NULLIF(excluded.city, ''), address.city), "
-	    "street = COALESCE(NULLIF(excluded.street, ''), address.street), "
-	    "zip = COALESCE(NULLIF(excluded.zip, ''), address.zip);";
+void insert(sqlite3* db, const std::string& uuid,
+	    const std::vector<std::string>& propertyName,
+	    const std::vector<std::string>& propertyValue,
+	    const std::string& tableName) {
+	// Build query for insert
+	std::string query = "INSERT INTO " + tableName + " (uuid";
+	for (const auto& name : propertyName) {
+		query += ", " + name;
+	}
+	query += ") VALUES (?, ";
+	for (std::vector<std::string>::size_type i = 0; i < propertyName.size();
+	     i++) {
+		query += "?";
+		if (i < propertyName.size() - 1) {
+			query += ", ";
+		}
+	}
+	query += ");";
 
 	sqlite3_stmt* stmt;
-
-	if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-		sqlite3_bind_text(
-		    stmt, 1,
-		    address.city.empty() ? nullptr : address.city.c_str(), -1,
-		    SQLITE_STATIC);
-		sqlite3_bind_text(
-		    stmt, 2,
-		    address.street.empty() ? nullptr : address.street.c_str(),
-		    -1, SQLITE_STATIC);
-		sqlite3_bind_text(
-		    stmt, 3,
-		    address.zip.empty() ? nullptr : address.zip.c_str(), -1,
-		    SQLITE_STATIC);
-		sqlite3_bind_text(stmt, 4, uuid.c_str(), -1, SQLITE_STATIC);
-
-		if (sqlite3_step(stmt) != SQLITE_DONE) {
-			std::cerr << "Error inserting/updating address: "
-				  << sqlite3_errmsg(db) << std::endl;
-		}
-		sqlite3_finalize(stmt);
-	} else {
-		std::cerr << "Error preparing statement: " << sqlite3_errmsg(db)
+	if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) !=
+	    SQLITE_OK) {
+		std::cerr << "Error for preaparing in insert  "
+			  << sqlite3_errmsg(db) << std::endl;
+		return;
+	}
+	// Bind uuid
+	sqlite3_bind_text(stmt, 1, uuid.c_str(), -1, SQLITE_STATIC);
+	// Bind property
+	for (std::vector<std::string>::size_type i = 0;
+	     i < propertyValue.size(); i++) {
+		sqlite3_bind_text(stmt, i + 2, propertyValue[i].c_str(), -1,
+				  SQLITE_STATIC);
+	}
+	// Execute
+	if (sqlite3_step(stmt) != SQLITE_DONE) {
+		std::cerr << "Error executing insert " << sqlite3_errmsg(db)
 			  << std::endl;
+		return;
+	}
+	sqlite3_finalize(stmt);
+	std::cout << "insert in the : " << tableName << std::endl;
+}
+
+// function to open the Sqlite database
+void openDb(sqlite3* db) {
+	if (sqlite3_open("library.db", &db) != SQLITE_OK) {
+		std::cerr << "Can't open database: " << sqlite3_errmsg(db)
+			  << std::endl;
+		return;
 	}
 }
 
-xmlNodePtr createLibraryNode(xmlDocPtr doc, const Library& library) {
+/*xmlNodePtr createLibraryNode(xmlDocPtr doc, const Library& library) {
 	xmlNodePtr libraryNode = xmlNewNode(nullptr, BAD_CAST "library");
 
 	xmlNewChild(libraryNode, nullptr, BAD_CAST "uuid",
@@ -207,7 +254,7 @@ xmlNodePtr createLibraryNode(xmlDocPtr doc, const Library& library) {
 
 	return libraryNode;
 }
-xmlDocPtr generateXml(const std::vector<Library>& libraries) {
+xmlDocPtr generateXml() {
 	xmlDocPtr doc = xmlNewDoc(BAD_CAST "1.0");
 	xmlNodePtr rootNode = xmlNewNode(nullptr, BAD_CAST "libraries");
 	xmlDocSetRootElement(doc, rootNode);
@@ -240,10 +287,12 @@ void fillLibrary(std::unordered_map<std::string, Library>& libraryMap,
 	}
 	sqlite3_finalize(libraryStmt);
 }
-// Fill the address details of libraries from the database into the libraryMap
+// Fill the address details of libraries from the database into
+// the libraryMap
 void fillAddress(std::unordered_map<std::string, Library>& libraryMap,
 		 sqlite3* db) {
-	// SQL query to select city, street, zip, and uuid from address table
+	// SQL query to select city, street, zip, and uuid from
+	// address table
 	const char* addressQuery =
 	    "SELECT city , street , zip , uuid FROM address";
 
@@ -268,22 +317,24 @@ void fillAddress(std::unordered_map<std::string, Library>& libraryMap,
 
 		std::string uuid = reinterpret_cast<const char*>(
 		    sqlite3_column_text(addressStmt, 3));
-		// Check if the UUID exists in the libraryMap, and if so, assign
-		// the address
+		// Check if the UUID exists in the libraryMap,
+		// and if so, assign the address
 		if (libraryMap.find(uuid) != libraryMap.end()) {
 			libraryMap[uuid].address = address;
 		}
 	}
 	sqlite3_finalize(addressStmt);
 }
-// Fill the book details of libraries from the database into the libraryMap
+// Fill the book details of libraries from the database into the
+// libraryMap
 void fillBooks(std::unordered_map<std::string, Library>& libraryMap,
 	       sqlite3* db) {
-	// SQL query to select id, title, author, publication_year, and uuid
-	// from books table
+	// SQL query to select id, title, author,
+	// publication_year, and uuid from books table
 
 	const char* bookQuery =
-	    "SELECT id, title, author, publication_year, uuid FROM books";
+	    "SELECT id, title, author, publication_year, uuid "
+	    "FROM books";
 	sqlite3_stmt* bookStmt;
 	sqlite3_prepare_v2(db, bookQuery, -1, &bookStmt, nullptr);
 
@@ -304,26 +355,30 @@ void fillBooks(std::unordered_map<std::string, Library>& libraryMap,
 
 		book.uuid = reinterpret_cast<const char*>(
 		    sqlite3_column_text(bookStmt, 4));
-		// Check if the book's UUID exists in the libraryMap and add the
-		// book to the corresponding library
+		// Check if the book's UUID exists in the
+		// libraryMap and add the book to the
+		// corresponding library
 		if (libraryMap.find(book.uuid) != libraryMap.end()) {
 			libraryMap[book.uuid].books.push_back(book);
 		}
 	}
 	sqlite3_finalize(bookStmt);
 }
-// Fill the libraries vector with libraries and their associated addresses and
-// books
+// Fill the libraries vector with libraries and their associated
+// addresses and books
 void fillLibraries(std::vector<Library>& libraries, sqlite3* db) {
 	std::unordered_map<std::string, Library> libraryMap;
 
-	fillLibrary(libraryMap, db);  // Fill the libraryMap with libraries
+	fillLibrary(libraryMap,
+		    db);  // Fill the libraryMap with libraries
 
-	fillAddress(libraryMap, db);  // Fill addresses for libraries in the map
+	fillAddress(libraryMap,
+		    db);  // Fill addresses for libraries in the map
 
-	fillBooks(libraryMap, db);  // Fill books for libraries in the map
+	fillBooks(libraryMap,
+		  db);	// Fill books for libraries in the map
 
 	for (const auto& pair : libraryMap) {
 		libraries.push_back(pair.second);
 	}
-}
+}*/

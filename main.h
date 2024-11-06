@@ -5,6 +5,5 @@
 #include "server.h"
 
 void openDb();
-void process(const std::string xmlData , sqlite3* db);
 
 #endif
